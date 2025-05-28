@@ -106,6 +106,37 @@ body {
     gap: 15px;
 }
 
+.current-spool {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.current-spool-label {
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 4px;
+}
+
+.current-spool-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9em;
+}
+
+.spool-color-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: 1px solid #ddd;
+    flex-shrink: 0;
+}
+
+/* .printer-card {
+    min-height: 120px;
+} */
+
 .printer-card {
     background: white;
     border: 2px solid #e0e0e0;

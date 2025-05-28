@@ -104,17 +104,15 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 			<h3>Select Printer:</h3>
 			<div class="printer-grid">
 				<template x-for="printer in printers" :key="printer.id">
-					<div 
-						class="printer-card"
-						:class="{ 
+					<div class="printer-card"
+						:class="{
 							'selected': selectedPrinter && selectedPrinter.id === printer.id,
 							'disabled': printer.status === 'Printing'
 						}"
 						@click="printer.status !== 'Printing' && selectPrinter(printer)"
 					>
 						<div class="printer-name" x-text="printer.name"></div>
-						<div 
-							class="printer-status"
+						<div class="printer-status"
 							:class="{
 								'ready': printer.status === 'Ready',
 								'printing': printer.status === 'Printing',
@@ -123,6 +121,17 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 						>
 							<span x-text="getPrinterStatusEmoji(printer.status)"></span>
 							<span x-text="printer.status"></span>
+						</div>
+						
+						<!-- Current Spool Info -->
+						<div x-show="printer.current_spool" class="current-spool">
+							<div class="current-spool-label">Current:</div>
+							<div class="current-spool-info">
+								<span class="spool-color-dot" 
+									:style="{ backgroundColor: printer.current_spool ? printer.current_spool.color : '#888' }">
+								</span>
+								<span x-text="printer.current_spool ? printer.current_spool.name : ''"></span>
+							</div>
 						</div>
 					</div>
 				</template>
@@ -190,18 +199,28 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 
 // API: Get list of printers
 func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
+	type CurrentSpool struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Material string `json:"material"`
+		Color    string `json:"color"`
+	}
+
 	type PrinterResponse struct {
-		ID     string `json:"id"`
-		Name   string `json:"name"`
-		Status string `json:"status"`
-		URL    string `json:"url"` // Add OctoPrint URL
+		ID           string        `json:"id"`
+		Name         string        `json:"name"`
+		Status       string        `json:"status"`
+		URL          string        `json:"url"`
+		CurrentSpool *CurrentSpool `json:"current_spool,omitempty"`
 	}
 
 	printers := make([]PrinterResponse, len(h.config.Printers))
 	for i, p := range h.config.Printers {
 		status := "Unknown"
+		var currentSpool *CurrentSpool
 
 		if client, ok := h.octoprintClients[p.ID]; ok {
+			// Get printer state
 			if state, err := client.GetPrinterState(); err == nil {
 				if state.Flags.Printing {
 					status = "Printing"
@@ -213,13 +232,40 @@ func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
 					status = state.Text
 				}
 			}
+
+			// Get current spool (tool 0 for now)
+			if spoolID, err := client.GetCurrentSpool(0); err == nil && spoolID != "" {
+				// Fetch spool details from Spoolman
+				if spool, err := h.spoolmanClient.GetSpool(spoolID); err == nil {
+					color := "#888888"
+					if spool.Filament.ColorHex != "" {
+						color = spool.Filament.ColorHex
+						if !strings.HasPrefix(color, "#") {
+							color = "#" + color
+						}
+					}
+
+					displayName := spool.Filament.Name
+					if spool.Filament.Material != "" {
+						displayName = fmt.Sprintf("%s | %s", displayName, spool.Filament.Material)
+					}
+
+					currentSpool = &CurrentSpool{
+						ID:       spoolID,
+						Name:     displayName,
+						Material: spool.Filament.Material,
+						Color:    color,
+					}
+				}
+			}
 		}
 
 		printers[i] = PrinterResponse{
-			ID:     p.ID,
-			Name:   p.Name,
-			Status: status,
-			URL:    p.OctoPrintURL, // Include the URL
+			ID:           p.ID,
+			Name:         p.Name,
+			Status:       status,
+			URL:          p.OctoPrintURL,
+			CurrentSpool: currentSpool,
 		}
 	}
 
@@ -257,11 +303,13 @@ func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build a proper display name
 	displayName := spool.Filament.Name
-	if displayName == "" && spool.Filament.Material != "" {
-		displayName = fmt.Sprintf("%s - %s", spool.Filament.Vendor.Name, spool.Filament.Material)
+	if spool.Filament.Material != "" {
+		displayName = fmt.Sprintf("%s | %s", displayName, spool.Filament.Material)
 	}
+
+	log.Printf("Display Name: %+v", displayName)
+	log.Printf("Material: %+v", spool.Filament.Material)
 
 	// In handleGetSpool, update the response building:
 	response := map[string]interface{}{
