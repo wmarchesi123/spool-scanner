@@ -23,10 +23,12 @@ RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
+# Copy go mod files
 COPY go.mod ./
 COPY go.sum* ./
 RUN go mod download
 
+# Copy source code
 COPY . .
 
 # Build for ARM64 explicitly

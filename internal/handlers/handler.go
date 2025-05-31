@@ -23,9 +23,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/wmarchesi123/spool-scanner/internal/config"
-	"github.com/wmarchesi123/spool-scanner/internal/octoprint"
-	"github.com/wmarchesi123/spool-scanner/internal/spoolman"
+	"github.com/wmarchesi123/go-3dprint-client/config"
+	"github.com/wmarchesi123/go-3dprint-client/octoprint"
+	"github.com/wmarchesi123/go-3dprint-client/spoolman"
 )
 
 type Handler struct {
@@ -48,7 +48,7 @@ func NewHandler() *Handler {
 		spoolmanClient:   spoolman.NewClient(cfg.SpoolmanURL),
 	}
 
-	// Create OctoPrint clients for each printer
+	// Initialize OctoPrint clients for each printer
 	for _, printer := range cfg.Printers {
 		h.octoprintClients[printer.ID] = octoprint.NewClient(printer.OctoPrintURL, printer.APIKey)
 	}
@@ -58,7 +58,7 @@ func NewHandler() *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Add CORS headers if needed
+	// CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -72,20 +72,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setupRoutes() {
-	// Static files
 	h.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
-
-	// Pages
 	h.mux.HandleFunc("/", h.handleHome)
 	h.mux.HandleFunc("/select/", h.handleSpoolSelect)
-
-	// API endpoints
 	h.mux.HandleFunc("/api/printers", h.handleGetPrinters)
 	h.mux.HandleFunc("/api/spool/", h.handleGetSpool)
 	h.mux.HandleFunc("/api/assign", h.handleAssignSpool)
 }
 
-// Response helpers
 func (h *Handler) respondJSON(w http.ResponseWriter, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(data); err != nil {

@@ -27,7 +27,6 @@ import (
 	"strings"
 )
 
-// Home page - just redirects to instructions
 func (h *Handler) handleHome(w http.ResponseWriter, r *http.Request) {
 	tmpl := `
 <!DOCTYPE html>
@@ -53,10 +52,7 @@ func (h *Handler) handleHome(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(tmpl))
 }
 
-// Spool selection page
 func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
-	// Extract spool ID from URL
-	// URL format: /select/SPOOL_123
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 3 {
 		http.Error(w, "Invalid URL", http.StatusBadRequest)
@@ -69,7 +65,6 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// We'll implement the template in the next step
 	tmplStr := `
 <!DOCTYPE html>
 <html>
@@ -140,12 +135,11 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 							<span x-text="getPrinterStatusEmoji(printer.status)"></span>
 							<span x-text="printer.status"></span>
 						</div>
-						
 						<!-- Current Spool Info -->
 						<div x-show="printer.current_spool" class="current-spool">
 							<div class="current-spool-label">Current:</div>
 							<div class="current-spool-info">
-								<span class="spool-color-dot" 
+								<span class="spool-color-dot"
 									:style="{ backgroundColor: printer.current_spool ? printer.current_spool.color : '#888' }">
 								</span>
 								<span x-text="printer.current_spool ? printer.current_spool.name : ''"></span>
@@ -154,12 +148,10 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 					</div>
 				</template>
 			</div>
-
 			<div x-show="error" class="message message-error" x-text="error"></div>
-
 			<div class="button-group">
-				<button 
-					class="btn btn-primary" 
+				<button
+					class="btn btn-primary"
 					:disabled="!selectedPrinter"
 					@click="confirmAssignment()"
 				>
@@ -215,7 +207,6 @@ func (h *Handler) handleSpoolSelect(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, data)
 }
 
-// API: Get list of printers
 func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
 	type CurrentSpool struct {
 		ID       string `json:"id"`
@@ -233,6 +224,7 @@ func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
 	}
 
 	printers := make([]PrinterResponse, len(h.config.Printers))
+
 	for i, p := range h.config.Printers {
 		status := "Unknown"
 		var currentSpool *CurrentSpool
@@ -240,18 +232,18 @@ func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
 		if client, ok := h.octoprintClients[p.ID]; ok {
 			// Get printer state
 			if state, err := client.GetPrinterState(); err == nil {
-				if state.Flags.Printing {
+				if state.State.Flags.Printing {
 					status = "Printing"
-				} else if state.Flags.Ready {
+				} else if state.State.Flags.Ready {
 					status = "Ready"
-				} else if state.Flags.Error {
+				} else if state.State.Flags.Error {
 					status = "Error"
 				} else {
-					status = state.Text
+					status = state.State.Text
 				}
 			}
 
-			// Get current spool (tool 0 for now)
+			// Get current spool
 			if spoolID, err := client.GetCurrentSpool(0); err == nil && spoolID != "" {
 				// Fetch spool details from Spoolman
 				if spool, err := h.spoolmanClient.GetSpool(spoolID); err == nil {
@@ -292,7 +284,6 @@ func (h *Handler) handleGetPrinters(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// API: Get spool details
 func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
@@ -301,7 +292,6 @@ func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 	}
 
 	spoolID := parts[3]
-
 	spool, err := h.spoolmanClient.GetSpool(spoolID)
 	if err != nil {
 		h.respondError(w, "Spool not found", http.StatusNotFound)
@@ -312,8 +302,8 @@ func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Spool data from Spoolman: %+v", spool)
 	log.Printf("Filament data: %+v", spool.Filament)
 
-	// Extract color from ColorHex or use name as fallback
-	color := "#888888" // Default gray
+	// Format color
+	color := "#888888"
 	if spool.Filament.ColorHex != "" {
 		color = spool.Filament.ColorHex
 		if !strings.HasPrefix(color, "#") {
@@ -321,6 +311,7 @@ func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Format display name
 	displayName := spool.Filament.Name
 	if spool.Filament.Material != "" {
 		displayName = fmt.Sprintf("%s | %s", displayName, spool.Filament.Material)
@@ -329,28 +320,23 @@ func (h *Handler) handleGetSpool(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Display Name: %+v", displayName)
 	log.Printf("Material: %+v", spool.Filament.Material)
 
-	// In handleGetSpool, update the response building:
 	response := map[string]interface{}{
-		"id":        spoolID,
-		"name":      displayName,
-		"material":  spool.Filament.Material,
-		"color":     color,
-		"color_hex": color,
-		"vendor":    spool.Filament.Vendor.Name,
-		// Use spool weight if available, otherwise use filament weight
-		"weight":    spool.InitialWeight,
-		"used":      spool.UsedWeight,
-		"remaining": spool.InitialWeight - spool.UsedWeight,
-		// Include filament weight as fallback
+		"id":              spoolID,
+		"name":            displayName,
+		"material":        spool.Filament.Material,
+		"color":           color,
+		"color_hex":       color,
+		"vendor":          spool.Filament.Vendor.Name,
+		"weight":          spool.InitialWeight,
+		"used":            spool.UsedWeight,
+		"remaining":       spool.InitialWeight - spool.UsedWeight,
 		"filament_weight": spool.Filament.Weight,
 	}
 
 	log.Printf("Sending response: %+v", response)
-
 	h.respondJSON(w, response)
 }
 
-// API: Assign spool to printer
 func (h *Handler) handleAssignSpool(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		h.respondError(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -374,7 +360,7 @@ func (h *Handler) handleAssignSpool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set the active spool (tool 0 for now, can be extended)
+	// Set the active spool
 	if err := client.SetActiveSpool(req.SpoolID, 0); err != nil {
 		log.Printf("Failed to set spool: %v", err)
 		h.respondError(w, "Failed to set spool", http.StatusInternalServerError)

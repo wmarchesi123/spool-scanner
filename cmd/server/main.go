@@ -30,7 +30,7 @@ import (
 )
 
 func main() {
-	// Get configuration from environment
+	// Get port from environment or default to 8080
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
@@ -39,7 +39,7 @@ func main() {
 	// Create handler
 	handler := handlers.NewHandler()
 
-	// Create server
+	// Configure server
 	srv := &http.Server{
 		Addr:         ":" + port,
 		Handler:      handler,
@@ -61,8 +61,9 @@ func main() {
 	signal.Notify(quit, os.Interrupt)
 	<-quit
 
-	// Graceful shutdown
 	log.Println("Shutting down server...")
+
+	// Graceful shutdown with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
